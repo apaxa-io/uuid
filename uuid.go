@@ -1,60 +1,73 @@
-//Origins:
-//nu7hatch/gouuid
-//james-lawrence/gouuid
-//applift/gouuid
-//an2deg/gouuid
-
-// This package provides immutable UUID structs and the functions
-// NewV3, NewV4, NewV5 and Parse() for generating versions 3, 4
-// and 5 UUIDs as specified in RFC 4122.
-//
-// Copyright (C) 2011 by Krzysztof Kowalik <chris@nu7hat.ch>
 package uuid
 
 import (
 	"encoding/hex"
 	"errors"
-	"regexp"
-	"strings"
 )
 
-const uuidLen = 16                  // UUID length in bytes
-const uuidStringLen = uuidLen*2 + 4 // Default UUID string representation length in chars
-
-// The UUID reserved variants.
-const (
-	ReservedNCS       byte = 0x80
-	ReservedRFC4122   byte = 0x40
-	ReservedMicrosoft byte = 0x20
-	ReservedFuture    byte = 0x00
-)
-
-// TODO hide variable from world, overwise smbd may change them
-// The following standard UUIDs are for use with NewV3() or NewV5().
-var (
-	NamespaceDNS, _  = ParseHex("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
-	NamespaceURL, _  = ParseHex("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
-	NamespaceOID, _  = ParseHex("6ba7b812-9dad-11d1-80b4-00c04fd430c8")
-	NamespaceX500, _ = ParseHex("6ba7b814-9dad-11d1-80b4-00c04fd430c8")
-)
-
-// Pattern used to parse hex string representation of the UUID.
-// FIXME: do something to consider both brackets at one time,
-// current one allows to parse string with only one opening
-// or closing bracket.
-const hexPattern = "^(urn\\:uuid\\:)?\\{?([a-z0-9]{8})-([a-z0-9]{4})-" +
-	"([1-5][a-z0-9]{3})-([a-z0-9]{4})-([a-z0-9]{12})\\}?$"
-
-var re = regexp.MustCompile(hexPattern)
+// UUID representation compliant with specification described in RFC 4122.
+type UUID [uuidLen]byte
 
 var nullUUID = UUID{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
-// A UUID representation compliant with specification in
-// RFC 4122 document.
-type UUID [uuidLen]byte
+// ParseString extract UUID from its standard string representation (like "6ba7b814-9dad-11d1-80b4-00c04fd430c8").
+func (u *UUID) ParseString(s string) (err error) {
+	if len(s) != uuidStringLen {
+		err = errors.New("Invalid UUID string length")
+		return
+	}
 
-// Parse creates a UUID object from given bytes slice.
-func Parse(b []byte) (u UUID, err error) {
+	// TODO after testing remove check for "l"
+	if s[sDelim0At] != uuidDelim || s[sDelim1At] != uuidDelim || s[sDelim2At] != uuidDelim || s[sDelim3At] != uuidDelim {
+		err = errors.New("Invalid UUID string delimiters")
+		return
+	}
+
+	b := []byte(s)
+
+	if l, e := hex.Decode(u[part0From:part1From], b[sPart0From:sPart0To]); l != part0Len || e != nil {
+		err = errors.New("Invalid UUID part 1")
+		return
+	}
+
+	if l, e := hex.Decode(u[part1From:part2From], b[sPart1From:sPart1To]); l != part1Len || e != nil {
+		err = errors.New("Invalid UUID part 2")
+		return
+	}
+
+	if l, e := hex.Decode(u[part2From:part3From], b[sPart2From:sPart2To]); l != part2Len || e != nil {
+		err = errors.New("Invalid UUID part 3")
+		return
+	}
+
+	if l, e := hex.Decode(u[part3From:part4From], b[sPart3From:sPart3To]); l != part3Len || e != nil {
+		err = errors.New("Invalid UUID part 4")
+		return
+	}
+
+	if l, e := hex.Decode(u[part4From:], b[sPart4From:sPart4To]); l != part4Len || e != nil {
+		err = errors.New("Invalid UUID part 5")
+		return
+	}
+	return
+}
+
+// ParseCleanString extract UUID from clean string UUID representation (like "6ba7b8149dad11d180b400c04fd430c8").
+func (u *UUID) ParseCleanString(s string) (err error) {
+	if len(s) != uuidCleanStringLen {
+		err = errors.New("Invalid UUID clean string length")
+		return
+	}
+
+	if l, e := hex.Decode(u[:], []byte(s)); l != uuidLen || e != nil {
+		err = errors.New("Unable to parse UUID from clean string")
+	}
+
+	return
+}
+
+// ParseBytes extract UUID from byte slice (as-is).
+func (u *UUID) ParseBytes(b []byte) (err error) {
 	if len(b) != uuidLen {
 		err = errors.New("Given slice is not valid UUID sequence")
 		return
@@ -63,95 +76,66 @@ func Parse(b []byte) (u UUID, err error) {
 	return
 }
 
-// ParseHex creates a UUID object from given hex string
+// FromString creates a UUID object from given hex string
 // representation. Function accepts UUID string in following
 // formats:
 //
-//     uuid.ParseHex("6ba7b814-9dad-11d1-80b4-00c04fd430c8")
-//     uuid.ParseHex("{6ba7b814-9dad-11d1-80b4-00c04fd430c8}")
-//     uuid.ParseHex("urn:uuid:6ba7b814-9dad-11d1-80b4-00c04fd430c8")
+//     uuid.FromString("6ba7b814-9dad-11d1-80b4-00c04fd430c8")
 //
-func ParseHex(s string) (u UUID, err error) {
-	md := re.FindStringSubmatch(strings.ToLower(s))
-	if md == nil {
-		err = errors.New("Invalid UUID string " + s)
-		return
-	}
-	hash := md[2] + md[3] + md[4] + md[5] + md[6]
-	b, err := hex.DecodeString(hash) // TODO redeclaration of err???
-	if err != nil {
-		return
-	}
-	copy(u[:], b)
+func FromString(s string) (u UUID, err error) {
+	err = u.ParseString(s)
 	return
 }
 
-// ParseHex creates a UUID object from given hex string
+// FromCleanString creates a UUID object from given hex string
 // in lower case without any additional chars.
 //
-//     uuid.ParseClean("6ba7b8149dad11d180b400c04fd430c8")
+//     uuid.FromCleanString("6ba7b8149dad11d180b400c04fd430c8")
 //
-func ParseClean(s string) (u UUID, err error) {
-	if len(s) != uuidLen*2 {
-		errors.New("Invalid UUID clean string " + s)
-		return
-	}
-
-	b, err := hex.DecodeString(s) // TODO redeclaration of err???
-	if err != nil {
-		return
-	}
-	copy(u[:], b)
+func FromCleanString(s string) (u UUID, err error) {
+	err = u.ParseCleanString(s)
 	return
 }
 
-// Variant returns the UUID Variant, which determines the internal
-// layout of the UUID. This will be one of the constants: RESERVED_NCS,
-// RFC_4122, RESERVED_MICROSOFT, RESERVED_FUTURE.
-func (u UUID) Variant() byte {
-	if u[8]&ReservedNCS == ReservedNCS {
-		return ReservedNCS
-	} else if u[8]&ReservedRFC4122 == ReservedRFC4122 {
-		return ReservedRFC4122
-	} else if u[8]&ReservedMicrosoft == ReservedMicrosoft {
-		return ReservedMicrosoft
-	}
-	return ReservedFuture
-}
-
-// Version returns a version number of the algorithm used to
-// generate the UUID sequence.
-func (u UUID) Version() uint {
-	return uint(u[6] >> 4)
-}
-
+// IsNull return true if UUID is NULL (all bytes are zero).
 func (u UUID) IsNull() bool {
 	return u == nullUUID
 }
 
-// Returns string representation of UUID.
+// FromBytes creates a UUID object from given bytes slice.
+func FromBytes(b []byte) (u UUID, err error) {
+	err = u.ParseBytes(b)
+	return
+}
+
+// String returns string representation of UUID.
 func (u UUID) String() string {
-	const s byte = '-'
 	buf := make([]byte, uuidStringLen)
 
-	hex.Encode(buf[0:8], u[0:4])
-	buf[8] = s
-	hex.Encode(buf[9:13], u[4:6])
-	buf[13] = s
-	hex.Encode(buf[14:18], u[6:8])
-	buf[18] = s
-	hex.Encode(buf[19:23], u[8:10])
-	buf[23] = s
-	hex.Encode(buf[24:], u[10:])
+	hex.Encode(buf[sPart0From:sPart0To], u[part0From:part1From])
+	buf[sDelim0At] = uuidDelim
+	hex.Encode(buf[sPart1From:sPart1To], u[part1From:part2From])
+	buf[sDelim1At] = uuidDelim
+	hex.Encode(buf[sPart2From:sPart2To], u[part2From:part3From])
+	buf[sDelim2At] = uuidDelim
+	hex.Encode(buf[sPart3From:sPart3To], u[part3From:part4From])
+	buf[sDelim3At] = uuidDelim
+	hex.Encode(buf[sPart4From:sPart4To], u[part4From:])
 
 	return string(buf)
 }
 
-func (u UUID) GoString() string {
-	return "\"" + u.String() + "\""
-}
-
-// Returns clean string representation of UUID (without any additional chars and in lower case)
+// CleanString returns clean string representation of UUID (without any additional chars and in lower case).
 func (u UUID) CleanString() string {
 	return hex.EncodeToString(u[:])
+}
+
+// Bytes returns byte slice containing UUID (as-is).
+func (u UUID) Bytes() []byte {
+	return u[:]
+}
+
+// Null returns NULL UUID (all bytes are zero).
+func Null() UUID {
+	return nullUUID
 }
