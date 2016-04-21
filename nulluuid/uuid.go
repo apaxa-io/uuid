@@ -16,7 +16,7 @@ type UUID struct {
 // Scan implements the pgx.Scanner interface.
 func (u *UUID) Scan(vr *pgx.ValueReader) error {
 	if vr.Type().DataType != pgx.UuidOid {
-		return pgx.SerializationError(fmt.Sprintf("UUID.pgxScan cannot decode %s (OID %d)", vr.Type().DataTypeName, vr.Type().DataType))
+		return pgx.SerializationError(fmt.Sprintf("UUID.Scan cannot decode %s (OID %d)", vr.Type().DataTypeName, vr.Type().DataType))
 	}
 
 	if vr.Len() == -1 {

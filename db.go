@@ -15,11 +15,11 @@ func init() {
 // Scan implements the pgx.Scanner interface.
 func (u *UUID) Scan(vr *pgx.ValueReader) error {
 	if vr.Type().DataType != pgx.UuidOid {
-		return pgx.SerializationError(fmt.Sprintf("UUID.pgxScan cannot decode %s (OID %d)", vr.Type().DataTypeName, vr.Type().DataType))
+		return pgx.SerializationError(fmt.Sprintf("UUID.Scan cannot decode %s (OID %d)", vr.Type().DataTypeName, vr.Type().DataType))
 	}
 
 	if vr.Len() == -1 {
-		return pgx.SerializationError("UUID.pgxScan cannot parse NULL value")
+		return pgx.SerializationError("UUID.Scan cannot parse NULL value")
 	}
 
 	switch vr.Type().FormatCode {
